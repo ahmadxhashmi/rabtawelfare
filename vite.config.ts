@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/Rabta-Web/',
+  base: '/rabtawelfare/',
   plugins: [react(), tailwindcss(), viteSingleFile()],
   resolve: {
     alias: {
