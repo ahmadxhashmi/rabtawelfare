@@ -56,10 +56,12 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "A" || e.key === "a")) {
         e.preventDefault();
         if (checkIsAdminPath()) {
-          window.history.pushState({}, "", "/");
+          window.location.hash = "";
+          const basePath = window.location.pathname.replace(/\/admin\/?$/, "") || "./";
+          window.history.pushState({}, "", basePath);
           setIsAdminRoute(false);
         } else {
-          window.history.pushState({}, "", "/admin");
+          window.location.hash = "admin";
           setIsAdminRoute(true);
         }
       }
@@ -167,7 +169,9 @@ export default function App() {
     return (
       <AdminDashboard
         onExitAdmin={() => {
-          window.history.pushState({}, "", "/");
+          window.location.hash = "";
+          const basePath = window.location.pathname.replace(/\/admin\/?$/, "") || "./";
+          window.history.pushState({}, "", basePath);
           setIsAdminRoute(false);
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}

@@ -1,5 +1,6 @@
 import React from "react";
-import { Mail, Phone, CheckCircle2, ShieldCheck, MapPin, Calendar } from "lucide-react";
+import { Mail, Phone, CheckCircle2, ShieldCheck, MapPin, Calendar, Lock } from "lucide-react";
+import logoImg from "../../assets/logo.jpg";
 
 interface CinematicFooterProps {
   onRequestBlood: () => void;
@@ -19,7 +20,7 @@ export const CinematicFooter: React.FC<CinematicFooterProps> = ({
           <div className="space-y-4 lg:col-span-1">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-full overflow-hidden p-0.5 liquid-glass border border-white/20 bg-white shrink-0">
-                <img src="/logo.jpg" alt="Logo" className="w-full h-full object-contain rounded-full" />
+                <img src={logoImg} alt="Logo" className="w-full h-full object-contain rounded-full" />
               </div>
               <div>
                 <span className="font-semibold text-base tracking-tight text-white block">
@@ -105,6 +106,17 @@ export const CinematicFooter: React.FC<CinematicFooterProps> = ({
                 <a href="tel:+923105290577" className="hover:text-white transition-colors">
                   Emergency Desk
                 </a>
+              </li>
+              <li>
+                <button 
+                  onClick={() => {
+                    window.location.hash = "admin";
+                  }} 
+                  className="hover:text-white transition-colors text-left cursor-pointer flex items-center gap-1.5 text-white/50 hover:text-white"
+                >
+                  <Lock size={12} className="opacity-70" />
+                  <span>Admin Portal</span>
+                </button>
               </li>
             </ul>
           </div>
