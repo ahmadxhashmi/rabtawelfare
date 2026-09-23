@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Shield, Flame, UserCheck, HeartHandshake, Phone, ArrowRight, Building2, MapPin } from "lucide-react";
 import { TWIN_CITY_HOSPITALS } from "../../data/twinCityData";
+import logoImg from "../../assets/logo.jpg";
 
 interface AboutUsSectionProps {
   onRequestBlood: (hospitalName?: string) => void;
@@ -45,7 +46,7 @@ export const AboutUsSection: React.FC<AboutUsSectionProps> = ({
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-8 border-b border-white/10">
           <div className="flex items-center gap-4 sm:gap-5">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden p-0.5 liquid-glass border border-white/20 bg-white shadow-xl shrink-0">
-              <img src="/logo.jpg" alt="Rabta-e-Hayat Logo" className="w-full h-full object-contain rounded-full" />
+              <img src={logoImg} alt="Rabta-e-Hayat Logo" className="w-full h-full object-contain rounded-full" />
             </div>
             <div>
               <span 
@@ -122,7 +123,7 @@ export const AboutUsSection: React.FC<AboutUsSectionProps> = ({
 
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden p-0.5 matte-glass border border-white/20 bg-white flex items-center justify-center shrink-0 shadow-lg">
-                  <img src="/logo.jpg" alt="Malaika Shahzadi - Rabta-e-Hayat" className="w-full h-full object-contain rounded-2xl" />
+                  <img src={logoImg} alt="Malaika Shahzadi - Rabta-e-Hayat" className="w-full h-full object-contain rounded-2xl" />
                 </div>
                 <div>
                   <h4 className="text-xl sm:text-2xl font-semibold text-white">

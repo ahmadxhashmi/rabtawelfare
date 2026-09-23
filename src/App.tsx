@@ -6,6 +6,7 @@ import { AboutUsSection } from "./components/sections/AboutUsSection";
 import { DonateUsSection } from "./components/sections/DonateUsSection";
 import { CinematicFooter } from "./components/layout/CinematicFooter";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
+import logoImg from "./assets/logo.jpg";
 
 const checkIsAdminPath = () => {
   if (typeof window === "undefined") return false;
@@ -222,7 +223,7 @@ export default function App() {
         >
           <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full overflow-hidden p-0.5 liquid-glass border border-white/20 group-hover:border-white/50 transition-all flex items-center justify-center bg-white shrink-0 shadow-lg">
             <img 
-              src="/logo.jpg" 
+              src={logoImg} 
               alt="Rabta-e-Hayat Logo" 
               className="w-full h-full object-contain rounded-full" 
             />
