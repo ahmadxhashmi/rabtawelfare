@@ -34,17 +34,7 @@ export const supabase = createClient(
 // -------------------------------------------------------------
 export const authSignIn = async (email: string, password: string) => {
   if (!isSupabaseConfigured()) {
-    // Development / Offline Fallback
-    if (email.toLowerCase() === "admin@rabtaehayat.pk" && password === "Rabta2026!") {
-      return {
-        data: {
-          user: { id: "offline-admin", email: "admin@rabtaehayat.pk" },
-          session: { access_token: "offline-jwt-token" },
-        },
-        error: null,
-      };
-    }
-    return { data: null, error: { message: "Invalid credentials or database not configured." } };
+    return { data: null, error: { message: "Database not configured. Please check .env file." } };
   }
   return await supabase.auth.signInWithPassword({ email, password });
 };

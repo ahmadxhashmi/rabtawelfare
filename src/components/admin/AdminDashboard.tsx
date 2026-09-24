@@ -57,7 +57,6 @@ import {
   Heart,
   Lock,
   Mail,
-  KeyRound,
   Eye,
   EyeOff,
   ShieldCheck,
@@ -89,12 +88,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
   const [coordinatorEmail, setCoordinatorEmail] = useState<string>(() => getAdminCoordinatorEmail());
 
   // Login form state
-  const [authMode, setAuthMode] = useState<"signin" | "signup" | "pin">("signin");
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [emailInput, setEmailInput] = useState<string>("admin@rabtaehayat.pk");
   const [passwordInput, setPasswordInput] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
-  const [pinInput, setPinInput] = useState<string>("");
   const [loginLoading, setLoginLoading] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>("");
   const [loginSuccess, setLoginSuccess] = useState<string>("");
@@ -210,21 +208,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     setLoginSuccess("");
     setLoginLoading(true);
 
-    if (authMode === "pin") {
-      if (pinInput === "4455" || pinInput === "Rabta2026!") {
-        setAdminAuth("pin-session-token", "coordinator@rabtaehayat.pk", rememberMe);
-        setIsAuthenticated(true);
-        setCoordinatorEmail("coordinator@rabtaehayat.pk");
-        setLoginLoading(false);
-        notify("Unlocked with Coordinator Master PIN");
-        return;
-      } else {
-        setLoginError("Invalid Coordinator PIN. Check with lead desk.");
-        setLoginLoading(false);
-        return;
-      }
-    }
-
     if (!emailInput.trim() || !passwordInput.trim()) {
       setLoginError("Please enter both email and password");
       setLoginLoading(false);
@@ -240,9 +223,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
         setAdminAuth(data.session.access_token, data.user?.email, rememberMe);
         setIsAuthenticated(true);
         setCoordinatorEmail(data.user?.email || emailInput);
-        notify("New coordinator account created and authenticated");
+        notify("Coordinator account registered & authenticated");
       } else {
-        setLoginSuccess("Account registered! Please sign in with your password.");
+        setLoginSuccess("Account registered! Please sign in with your email & password.");
         setAuthMode("signin");
       }
       return;
@@ -253,7 +236,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     setLoginLoading(false);
 
     if (error) {
-      setLoginError(error.message || "Invalid coordinator login credentials");
+      if (error.message.toLowerCase().includes("email not confirmed")) {
+        setLoginError("Email not confirmed yet. In Supabase Dashboard: Go to Authentication -> Users -> Click '...' -> 'Confirm User', or turn off 'Confirm Email' in Providers -> Email.");
+      } else {
+        setLoginError(error.message || "Invalid coordinator login credentials");
+      }
     } else if (data?.session) {
       setAdminAuth(data.session.access_token, data.user?.email, rememberMe);
       setIsAuthenticated(true);
@@ -267,7 +254,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     setAdminAuth(null);
     setIsAuthenticated(false);
     setPasswordInput("");
-    setPinInput("");
     setLoginError("");
     setLoginSuccess("");
     notify("Coordinator session ended");
@@ -552,135 +538,83 @@ Official Welfare Email: welfarerabta@gmail.com`;
           )}
 
           {/* Form */}
-          {authMode !== "pin" ? (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-[#44403C] mb-1.5">
-                  Coordinator Email
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#ADB5BD]">
-                    <Mail size={14} />
-                  </div>
-                  <input
-                    type="email"
-                    required
-                    autoFocus
-                    placeholder="coordinator@rabtaehayat.pk"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-xs focus:outline-none focus:border-[#800000] focus:bg-white transition-colors"
-                  />
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-[#44403C] mb-1.5">
+                Coordinator Email
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#ADB5BD]">
+                  <Mail size={14} />
                 </div>
+                <input
+                  type="email"
+                  required
+                  autoFocus
+                  placeholder="coordinator@rabtaehayat.pk"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-xs focus:outline-none focus:border-[#800000] focus:bg-white transition-colors"
+                />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-medium text-[#44403C] mb-1.5">
-                  {authMode === "signup" ? "Create Password" : "Password"}
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#ADB5BD]">
-                    <Lock size={14} />
-                  </div>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    placeholder="••••••••••••"
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                    className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-xs focus:outline-none focus:border-[#800000] focus:bg-white transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#ADB5BD] hover:text-[#495057] cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
+            <div>
+              <label className="block text-xs font-medium text-[#44403C] mb-1.5">
+                {authMode === "signup" ? "Create Password" : "Password"}
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#ADB5BD]">
+                  <Lock size={14} />
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between text-xs text-[#6C757D]">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded border-[#CED4DA] text-[#800000] focus:ring-0"
-                  />
-                  <span>Keep session active</span>
-                </label>
-
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="••••••••••••"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-xs focus:outline-none focus:border-[#800000] focus:bg-white transition-colors"
+                />
                 <button
                   type="button"
-                  onClick={() => { setAuthMode("pin"); setLoginError(""); }}
-                  className="text-xs text-[#800000] hover:underline cursor-pointer"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#ADB5BD] hover:text-[#495057] cursor-pointer"
                 >
-                  Use Master PIN
+                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
+            </div>
 
-              <button
-                type="submit"
-                disabled={loginLoading}
-                className="w-full py-2.5 rounded-xl bg-[#800000] hover:bg-[#680000] text-white font-medium text-xs transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-2 disabled:opacity-70"
-              >
-                {loginLoading ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>Verifying with Supabase...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck size={14} />
-                    <span>{authMode === "signup" ? "Register & Unlock Desk" : "Unlock Admin Dashboard"}</span>
-                  </>
-                )}
-              </button>
-            </form>
-          ) : (
-            /* PIN Fallback View */
-            <form onSubmit={handleLogin} className="space-y-4 animate-fadeIn">
-              <div>
-                <label className="block text-xs font-medium text-[#44403C] mb-1.5">
-                  Coordinator Master PIN
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#ADB5BD]">
-                    <KeyRound size={14} />
-                  </div>
-                  <input
-                    type="password"
-                    autoFocus
-                    placeholder="••••"
-                    value={pinInput}
-                    onChange={(e) => setPinInput(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-sm tracking-widest font-mono focus:outline-none focus:border-[#800000] focus:bg-white transition-colors"
-                  />
-                </div>
-                <p className="text-[11px] text-[#868E96] mt-1.5">Emergency master pin for desk leads (Default: 4455 / Rabta2026!)</p>
-              </div>
+            <div className="flex items-center justify-between text-xs text-[#6C757D]">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="rounded border-[#CED4DA] text-[#800000] focus:ring-0"
+                />
+                <span>Keep session active</span>
+              </label>
+            </div>
 
-              <button
-                type="submit"
-                disabled={loginLoading}
-                className="w-full py-2.5 rounded-xl bg-[#800000] hover:bg-[#680000] text-white font-medium text-xs transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-2"
-              >
-                <KeyRound size={14} />
-                <span>Verify Master PIN</span>
-              </button>
-
-              <div className="text-center pt-1">
-                <button
-                  type="button"
-                  onClick={() => { setAuthMode("signin"); setLoginError(""); }}
-                  className="text-xs text-[#800000] hover:underline cursor-pointer"
-                >
-                  &larr; Return to Email &amp; Password Login
-                </button>
-              </div>
-            </form>
-          )}
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full py-2.5 rounded-xl bg-[#800000] hover:bg-[#680000] text-white font-medium text-xs transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-2 disabled:opacity-70"
+            >
+              {loginLoading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Verifying with Supabase...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={14} />
+                  <span>{authMode === "signup" ? "Register & Unlock Desk" : "Sign In to Admin Dashboard"}</span>
+                </>
+              )}
+            </button>
+          </form>
 
           {/* Quick Notice */}
           <div className="pt-2 border-t border-[#F0F0F2] text-center text-[11px] text-[#868E96] space-y-1">
