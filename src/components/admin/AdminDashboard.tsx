@@ -16,7 +16,9 @@ import {
   deleteVolunteer,
   checkAdminAuth,
   setAdminAuth,
-  resetToDefaults
+  resetToDefaults,
+  isDatabaseConnected,
+  syncFromDatabase
 } from "../../utils/adminStorage";
 import { 
   LayoutDashboard,
@@ -546,7 +548,26 @@ Official Welfare Email: welfarerabta@gmail.com`;
         </div>
 
         {/* Sidebar Footer Controls */}
-        <div className="p-3 border-t border-white/10 space-y-1">
+        <div className="p-3 border-t border-white/10 space-y-2">
+          {/* Database Sync Status Badge */}
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-black/30 border border-white/10 text-[10px]">
+            <span className="flex items-center gap-1.5 text-white/80">
+              <span className={`w-2 h-2 rounded-full ${isDatabaseConnected() ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+              <span className="font-mono">{isDatabaseConnected() ? "PostgreSQL Live" : "Local Mode"}</span>
+            </span>
+            <button
+              onClick={() => {
+                syncFromDatabase();
+                refreshData();
+                notify(isDatabaseConnected() ? "Synced with Supabase" : "Data refreshed locally");
+              }}
+              title="Sync Database"
+              className="text-white/40 hover:text-white transition-colors cursor-pointer"
+            >
+              <RefreshCw size={11} />
+            </button>
+          </div>
+
           <button
             onClick={onExitAdmin}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"

@@ -1,5 +1,20 @@
-import { BloodRequest, VolunteerDonor, AuditLog, CityName, BloodGroup, RequestStage, Severity } from "../types";
+import { BloodRequest, VolunteerDonor, AuditLog, RequestStage } from "../types";
 import { INITIAL_REQUESTS, INITIAL_VOLUNTEERS } from "../data/twinCityData";
+import {
+  isSupabaseConfigured,
+  dbFetchRequests,
+  dbInsertRequest,
+  dbUpdateRequestStage,
+  dbAssignDonor,
+  dbDeleteRequest,
+  dbFetchVolunteers,
+  dbInsertVolunteer,
+  dbUpdateVolunteer,
+  dbDeleteVolunteer,
+  dbFetchAuditLogs,
+  dbInsertAuditLog,
+  subscribeToRealtimeChanges,
+} from "../lib/supabase";
 
 const STORAGE_KEYS = {
   REQUESTS: "rabta_requests_v2",
@@ -35,7 +50,49 @@ const setStoredData = <T>(key: string, value: T): void => {
   }
 };
 
+// Database Status
+export const isDatabaseConnected = (): boolean => isSupabaseConfigured();
+
+// Background synchronization from Supabase to LocalStorage
+let isSyncing = false;
+export const syncFromDatabase = async (): Promise<void> => {
+  if (!isSupabaseConfigured() || isSyncing) return;
+  isSyncing = true;
+  try {
+    const [dbRequests, dbVolunteers, dbLogs] = await Promise.all([
+      dbFetchRequests(),
+      dbFetchVolunteers(),
+      dbFetchAuditLogs(),
+    ]);
+
+    if (dbRequests && dbRequests.length > 0) {
+      setStoredData(STORAGE_KEYS.REQUESTS, dbRequests);
+    }
+    if (dbVolunteers && dbVolunteers.length > 0) {
+      setStoredData(STORAGE_KEYS.VOLUNTEERS, dbVolunteers);
+    }
+    if (dbLogs && dbLogs.length > 0) {
+      setStoredData(STORAGE_KEYS.LOGS, dbLogs);
+    }
+  } catch (err) {
+    console.warn("Supabase initial sync deferred:", err);
+  } finally {
+    isSyncing = false;
+  }
+};
+
+// Initialize Supabase realtime channel listener
+if (typeof window !== "undefined" && isSupabaseConfigured()) {
+  syncFromDatabase();
+  subscribeToRealtimeChanges((table) => {
+    // When any table changes remotely in Supabase, sync immediately
+    syncFromDatabase();
+  });
+}
+
+// -------------------------------------------------------------
 // Loaders
+// -------------------------------------------------------------
 export const loadAllRequests = (): BloodRequest[] => {
   const reqs = getStoredData<BloodRequest[]>(STORAGE_KEYS.REQUESTS, INITIAL_REQUESTS);
   if (!Array.isArray(reqs)) return INITIAL_REQUESTS;
@@ -70,7 +127,9 @@ export const loadAuditLogs = (): AuditLog[] => {
   return getStoredData<AuditLog[]>(STORAGE_KEYS.LOGS, initialLogs);
 };
 
-// Add Audit Log
+// -------------------------------------------------------------
+// Audit Logs
+// -------------------------------------------------------------
 export const addAuditLog = (action: string, target: string, actor = "admin@rabtaehayat.pk"): void => {
   const logs = loadAuditLogs();
   const newLog: AuditLog = {
@@ -81,9 +140,16 @@ export const addAuditLog = (action: string, target: string, actor = "admin@rabta
     timestamp: new Date().toISOString(),
   };
   setStoredData(STORAGE_KEYS.LOGS, [newLog, ...logs.slice(0, 49)]); // keep recent 50
+
+  // Async push to Supabase
+  if (isSupabaseConfigured()) {
+    dbInsertAuditLog(newLog);
+  }
 };
 
+// -------------------------------------------------------------
 // Requests CRUD
+// -------------------------------------------------------------
 export const saveRequest = (req: BloodRequest): void => {
   const requests = loadAllRequests();
   const existingIdx = requests.findIndex((r) => r.id === req.id);
@@ -95,6 +161,11 @@ export const saveRequest = (req: BloodRequest): void => {
     addAuditLog(`Created new emergency request for ${req.patientName} (${req.bloodGroup})`, req.id);
   }
   setStoredData(STORAGE_KEYS.REQUESTS, requests);
+
+  // Async push to Supabase
+  if (isSupabaseConfigured()) {
+    dbInsertRequest(req);
+  }
 };
 
 export const updateRequestStage = (requestId: string, nextStage: RequestStage): void => {
@@ -105,6 +176,11 @@ export const updateRequestStage = (requestId: string, nextStage: RequestStage): 
     target.stage = nextStage;
     setStoredData(STORAGE_KEYS.REQUESTS, [...requests]);
     addAuditLog(`Changed status of ${target.patientName} from ${oldStage} to ${nextStage}`, requestId);
+
+    // Async push to Supabase
+    if (isSupabaseConfigured()) {
+      dbUpdateRequestStage(requestId, nextStage);
+    }
   }
 };
 
@@ -116,9 +192,6 @@ export const assignDonorToRequest = (requestId: string, donor: VolunteerDonor | 
       target.assignedVolunteerId = donor.id;
       target.assignedVolunteerName = donor.fullName;
       target.assignedVolunteerPhone = donor.phone;
-      if (target.stage === "Submitted" || target.stage === "Screening") {
-        target.stage = "Matched";
-      }
       addAuditLog(`Assigned donor ${donor.fullName} to request ${target.id}`, target.id);
     } else {
       target.assignedVolunteerId = null;
@@ -127,6 +200,11 @@ export const assignDonorToRequest = (requestId: string, donor: VolunteerDonor | 
       addAuditLog(`Unassigned donor from request ${target.id}`, target.id);
     }
     setStoredData(STORAGE_KEYS.REQUESTS, [...requests]);
+
+    // Async push to Supabase
+    if (isSupabaseConfigured()) {
+      dbAssignDonor(requestId, donor);
+    }
   }
 };
 
@@ -135,9 +213,16 @@ export const deleteRequest = (requestId: string): void => {
   const filtered = requests.filter((r) => r.id !== requestId);
   setStoredData(STORAGE_KEYS.REQUESTS, filtered);
   addAuditLog(`Deleted blood request record`, requestId);
+
+  // Async delete from Supabase
+  if (isSupabaseConfigured()) {
+    dbDeleteRequest(requestId);
+  }
 };
 
+// -------------------------------------------------------------
 // Volunteers CRUD
+// -------------------------------------------------------------
 export const saveVolunteer = (vol: VolunteerDonor): void => {
   const volunteers = loadAllVolunteers();
   const existingIdx = volunteers.findIndex((v) => v.id === vol.id);
@@ -149,6 +234,11 @@ export const saveVolunteer = (vol: VolunteerDonor): void => {
     addAuditLog(`Registered new volunteer donor ${vol.fullName} (${vol.bloodGroup}, ${vol.city})`, vol.id);
   }
   setStoredData(STORAGE_KEYS.VOLUNTEERS, volunteers);
+
+  // Async push to Supabase
+  if (isSupabaseConfigured()) {
+    dbInsertVolunteer(vol);
+  }
 };
 
 export const toggleVolunteerVerification = (volunteerId: string): void => {
@@ -158,6 +248,11 @@ export const toggleVolunteerVerification = (volunteerId: string): void => {
     target.verified = !target.verified;
     setStoredData(STORAGE_KEYS.VOLUNTEERS, [...volunteers]);
     addAuditLog(`Marked donor ${target.fullName} as ${target.verified ? "Verified" : "Unverified"}`, target.id);
+
+    // Async push to Supabase
+    if (isSupabaseConfigured()) {
+      dbUpdateVolunteer(volunteerId, { verified: target.verified });
+    }
   }
 };
 
@@ -168,6 +263,11 @@ export const toggleVolunteerAvailability = (volunteerId: string): void => {
     target.availableNow = !target.availableNow;
     setStoredData(STORAGE_KEYS.VOLUNTEERS, [...volunteers]);
     addAuditLog(`Toggled availability of ${target.fullName} to ${target.availableNow ? "Available" : "Standby"}`, target.id);
+
+    // Async push to Supabase
+    if (isSupabaseConfigured()) {
+      dbUpdateVolunteer(volunteerId, { available_now: target.availableNow });
+    }
   }
 };
 
@@ -176,6 +276,11 @@ export const deleteVolunteer = (volunteerId: string): void => {
   const filtered = volunteers.filter((v) => v.id !== volunteerId);
   setStoredData(STORAGE_KEYS.VOLUNTEERS, filtered);
   addAuditLog(`Removed donor from volunteer registry`, volunteerId);
+
+  // Async delete from Supabase
+  if (isSupabaseConfigured()) {
+    dbDeleteVolunteer(volunteerId);
+  }
 };
 
 // Reset to factory defaults
@@ -186,7 +291,7 @@ export const resetToDefaults = (): void => {
   window.dispatchEvent(new CustomEvent("rabta_data_updated", { detail: { reset: true } }));
 };
 
-// Auth helper - Default to unlocked so navigating to /admin immediately opens dashboard
+// Auth helper
 export const checkAdminAuth = (): boolean => {
   if (typeof window === "undefined") return true;
   try {
