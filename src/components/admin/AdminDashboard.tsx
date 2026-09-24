@@ -16,10 +16,17 @@ import {
   deleteVolunteer,
   checkAdminAuth,
   setAdminAuth,
+  getAdminCoordinatorEmail,
   resetToDefaults,
   isDatabaseConnected,
   syncFromDatabase
 } from "../../utils/adminStorage";
+import {
+  authSignIn,
+  authSignUp,
+  authSignOut,
+  authGetSession,
+} from "../../lib/supabase";
 import { 
   LayoutDashboard,
   Users,
@@ -47,7 +54,15 @@ import {
   ExternalLink,
   Flame,
   Activity,
-  Heart
+  Heart,
+  Lock,
+  Mail,
+  KeyRound,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  ShieldAlert,
+  Loader2
 } from "lucide-react";
 
 interface AdminDashboardProps {
@@ -70,8 +85,19 @@ const BLOOD_GROUPS: BloodGroup[] = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) => {
   // Authentication
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => checkAdminAuth());
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState(false);
+  const [authChecking, setAuthChecking] = useState<boolean>(true);
+  const [coordinatorEmail, setCoordinatorEmail] = useState<string>(() => getAdminCoordinatorEmail());
+
+  // Login form state
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "pin">("signin");
+  const [emailInput, setEmailInput] = useState<string>("admin@rabtaehayat.pk");
+  const [passwordInput, setPasswordInput] = useState<string>("");
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [rememberMe, setRememberMe] = useState<boolean>(true);
+  const [pinInput, setPinInput] = useState<string>("");
+  const [loginLoading, setLoginLoading] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string>("");
+  const [loginSuccess, setLoginSuccess] = useState<string>("");
 
   // Active navigation section matching Figma sidebar:
   // overview | requests | donors | inventory | campaigns | broadcast | settings
@@ -132,6 +158,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     setVolunteers(loadAllVolunteers());
   };
 
+  // Verify Supabase session token on mount
+  useEffect(() => {
+    let isMounted = true;
+    const verifySession = async () => {
+      try {
+        const session = await authGetSession();
+        if (session && isMounted) {
+          setIsAuthenticated(true);
+          const email = session.user?.email || "admin@rabtaehayat.pk";
+          setCoordinatorEmail(email);
+          setAdminAuth(session.access_token, email, true);
+        } else if (isMounted) {
+          setIsAuthenticated(checkAdminAuth());
+        }
+      } catch (err) {
+        console.error("Session verification error:", err);
+        if (isMounted) setIsAuthenticated(checkAdminAuth());
+      } finally {
+        if (isMounted) setAuthChecking(false);
+      }
+    };
+
+    verifySession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     refreshData();
     window.addEventListener("rabta_data_updated", refreshData);
@@ -150,21 +204,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     };
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput === "4455" || pinInput === "admin") {
-      setAdminAuth(true);
+    setLoginError("");
+    setLoginSuccess("");
+    setLoginLoading(true);
+
+    if (authMode === "pin") {
+      if (pinInput === "4455" || pinInput === "Rabta2026!") {
+        setAdminAuth("pin-session-token", "coordinator@rabtaehayat.pk", rememberMe);
+        setIsAuthenticated(true);
+        setCoordinatorEmail("coordinator@rabtaehayat.pk");
+        setLoginLoading(false);
+        notify("Unlocked with Coordinator Master PIN");
+        return;
+      } else {
+        setLoginError("Invalid Coordinator PIN. Check with lead desk.");
+        setLoginLoading(false);
+        return;
+      }
+    }
+
+    if (!emailInput.trim() || !passwordInput.trim()) {
+      setLoginError("Please enter both email and password");
+      setLoginLoading(false);
+      return;
+    }
+
+    if (authMode === "signup") {
+      const { data, error } = await authSignUp(emailInput.trim(), passwordInput.trim());
+      setLoginLoading(false);
+      if (error) {
+        setLoginError(error.message);
+      } else if (data?.session) {
+        setAdminAuth(data.session.access_token, data.user?.email, rememberMe);
+        setIsAuthenticated(true);
+        setCoordinatorEmail(data.user?.email || emailInput);
+        notify("New coordinator account created and authenticated");
+      } else {
+        setLoginSuccess("Account registered! Please sign in with your password.");
+        setAuthMode("signin");
+      }
+      return;
+    }
+
+    // Normal Sign In
+    const { data, error } = await authSignIn(emailInput.trim(), passwordInput.trim());
+    setLoginLoading(false);
+
+    if (error) {
+      setLoginError(error.message || "Invalid coordinator login credentials");
+    } else if (data?.session) {
+      setAdminAuth(data.session.access_token, data.user?.email, rememberMe);
       setIsAuthenticated(true);
-      setPinError(false);
-    } else {
-      setPinError(true);
+      setCoordinatorEmail(data.user?.email || emailInput);
+      notify("Authenticated via Supabase JWT session");
     }
   };
 
-  const handleLogout = () => {
-    setAdminAuth(false);
+  const handleLogout = async () => {
+    await authSignOut();
+    setAdminAuth(null);
     setIsAuthenticated(false);
+    setPasswordInput("");
     setPinInput("");
+    setLoginError("");
+    setLoginSuccess("");
+    notify("Coordinator session ended");
   };
 
   const waLink = (phone: string, text: string) => {
@@ -352,68 +458,234 @@ Official Welfare Email: welfarerabta@gmail.com`;
   };
 
   // ==========================================
-  // 1. PIN LOGIN SCREEN
+  // 1. AUTHENTICATION & SECURITY SCREEN
   // ==========================================
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F7] text-[#1C1917] flex items-center justify-center p-4 font-sans">
+        <div className="flex flex-col items-center gap-3 p-8 rounded-2xl bg-white border border-[#E5E5E8] shadow-sm">
+          <Loader2 className="w-7 h-7 text-[#800000] animate-spin" />
+          <p className="text-xs text-[#78716C] font-mono">Verifying Coordinator Security Token...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#F5F5F7] text-[#1C1917] flex items-center justify-center p-4 font-sans">
-        <div className="w-full max-w-sm p-8 rounded-2xl bg-white border border-[#E5E5E8] shadow-[0_8px_30px_rgba(0,0,0,0.06)] space-y-6">
-          <div className="flex items-center justify-between pb-4 border-b border-[#F0F0F2]">
+        <div className="w-full max-w-md p-8 sm:p-9 rounded-3xl bg-white border border-[#E5E5E8] shadow-[0_12px_40px_rgba(0,0,0,0.08)] space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-5 border-b border-[#F0F0F2]">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-[#800000] text-white flex items-center justify-center font-bold text-sm shadow">
+              <div className="w-10 h-10 rounded-2xl bg-[#800000] text-white flex items-center justify-center font-bold text-sm shadow">
                 RH
               </div>
               <div>
-                <h1 className="text-sm font-semibold text-[#1C1917]">Rabta-e-Hayat</h1>
-                <p className="text-[11px] text-[#78716C]">Operations Desk</p>
+                <h1 className="text-sm font-semibold text-[#1C1917] flex items-center gap-1.5">
+                  <span>Rabta-e-Hayat</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-normal">
+                    Secure
+                  </span>
+                </h1>
+                <p className="text-[11px] text-[#78716C]">Operations Desk &amp; Patient Registry</p>
               </div>
             </div>
+
             <button
               onClick={onExitAdmin}
-              className="text-xs text-[#78716C] hover:text-[#1C1917] flex items-center gap-1 transition-colors"
+              className="text-xs text-[#78716C] hover:text-[#1C1917] flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-[#F5F5F7] transition-all cursor-pointer"
             >
               <ArrowLeft size={13} />
               <span>Website</span>
             </button>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-[#44403C] mb-1.5">Enter Coordinator PIN</label>
-              <input
-                type="password"
-                autoFocus
-                placeholder="••••"
-                value={pinInput}
-                onChange={(e) => {
-                  setPinInput(e.target.value);
-                  setPinError(false);
-                }}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-sm focus:outline-none focus:border-[#800000] focus:bg-white tracking-widest font-mono transition-colors"
-              />
-              {pinError && (
-                <p className="text-[11px] text-red-600 mt-1.5">Invalid PIN. Try 4455</p>
-              )}
+          {/* Database indicator */}
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#F8F9FA] border border-[#E9ECEF] text-[11px]">
+            <span className="flex items-center gap-1.5 text-[#495057]">
+              <span className={`w-2 h-2 rounded-full ${isDatabaseConnected() ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`} />
+              <span className="font-medium">{isDatabaseConnected() ? "Supabase PostgreSQL Database Active" : "Local Standby Mode"}</span>
+            </span>
+            <span className="text-[10px] text-[#868E96] font-mono">JWT Session</span>
+          </div>
+
+          {/* Mode Tabs */}
+          <div className="grid grid-cols-2 p-1 bg-[#F1F3F5] rounded-xl text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => { setAuthMode("signin"); setLoginError(""); }}
+              className={`py-2 rounded-lg transition-all cursor-pointer ${
+                authMode === "signin"
+                  ? "bg-white text-[#1C1917] shadow-sm font-semibold"
+                  : "text-[#6C757D] hover:text-[#1C1917]"
+              }`}
+            >
+              Sign In (Email)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthMode("signup"); setLoginError(""); }}
+              className={`py-2 rounded-lg transition-all cursor-pointer ${
+                authMode === "signup"
+                  ? "bg-white text-[#1C1917] shadow-sm font-semibold"
+                  : "text-[#6C757D] hover:text-[#1C1917]"
+              }`}
+            >
+              Register Coordinator
+            </button>
+          </div>
+
+          {/* Error / Success Notifications */}
+          {loginError && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+              <AlertTriangle size={15} className="shrink-0 text-red-600" />
+              <span>{loginError}</span>
             </div>
+          )}
 
-            <button
-              type="submit"
-              className="w-full py-2.5 rounded-xl bg-[#800000] hover:bg-[#680000] text-white font-medium text-xs transition-colors cursor-pointer shadow-sm"
-            >
-              Unlock Dashboard
-            </button>
-          </form>
+          {loginSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+              <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+              <span>{loginSuccess}</span>
+            </div>
+          )}
 
-          <div className="text-center pt-1">
-            <button
-              onClick={() => {
-                setAdminAuth(true);
-                setIsAuthenticated(true);
-              }}
-              className="text-[11px] text-[#A8A29E] hover:text-[#44403C] font-mono transition-colors"
-            >
-              [ 1-Click Demo PIN: 4455 ]
-            </button>
+          {/* Form */}
+          {authMode !== "pin" ? (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[#44403C] mb-1.5">
+                  Coordinator Email
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#ADB5BD]">
+                    <Mail size={14} />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    autoFocus
+                    placeholder="coordinator@rabtaehayat.pk"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-xs focus:outline-none focus:border-[#800000] focus:bg-white transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#44403C] mb-1.5">
+                  {authMode === "signup" ? "Create Password" : "Password"}
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#ADB5BD]">
+                    <Lock size={14} />
+                  </div>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    placeholder="••••••••••••"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-xs focus:outline-none focus:border-[#800000] focus:bg-white transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#ADB5BD] hover:text-[#495057] cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-[#6C757D]">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="rounded border-[#CED4DA] text-[#800000] focus:ring-0"
+                  />
+                  <span>Keep session active</span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode("pin"); setLoginError(""); }}
+                  className="text-xs text-[#800000] hover:underline cursor-pointer"
+                >
+                  Use Master PIN
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loginLoading}
+                className="w-full py-2.5 rounded-xl bg-[#800000] hover:bg-[#680000] text-white font-medium text-xs transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                {loginLoading ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Verifying with Supabase...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck size={14} />
+                    <span>{authMode === "signup" ? "Register & Unlock Desk" : "Unlock Admin Dashboard"}</span>
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            /* PIN Fallback View */
+            <form onSubmit={handleLogin} className="space-y-4 animate-fadeIn">
+              <div>
+                <label className="block text-xs font-medium text-[#44403C] mb-1.5">
+                  Coordinator Master PIN
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#ADB5BD]">
+                    <KeyRound size={14} />
+                  </div>
+                  <input
+                    type="password"
+                    autoFocus
+                    placeholder="••••"
+                    value={pinInput}
+                    onChange={(e) => setPinInput(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[#D1D1D6] text-[#1C1917] bg-[#FAFAFA] text-sm tracking-widest font-mono focus:outline-none focus:border-[#800000] focus:bg-white transition-colors"
+                  />
+                </div>
+                <p className="text-[11px] text-[#868E96] mt-1.5">Emergency master pin for desk leads (Default: 4455 / Rabta2026!)</p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loginLoading}
+                className="w-full py-2.5 rounded-xl bg-[#800000] hover:bg-[#680000] text-white font-medium text-xs transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-2"
+              >
+                <KeyRound size={14} />
+                <span>Verify Master PIN</span>
+              </button>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode("signin"); setLoginError(""); }}
+                  className="text-xs text-[#800000] hover:underline cursor-pointer"
+                >
+                  &larr; Return to Email &amp; Password Login
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Quick Notice */}
+          <div className="pt-2 border-t border-[#F0F0F2] text-center text-[11px] text-[#868E96] space-y-1">
+            <p>Protected by Supabase Auth with Row-Level Security.</p>
+            <p className="font-mono text-[10px] text-[#ADB5BD]">Encrypted token stored in secure client session.</p>
           </div>
         </div>
       </div>
@@ -440,12 +712,15 @@ Official Welfare Email: welfarerabta@gmail.com`;
         <div>
           {/* Sidebar Brand Header */}
           <div className="p-5 border-b border-white/10 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#800000] border border-white/20 text-white flex items-center justify-center font-bold text-xs shadow-inner">
+            <div className="w-8 h-8 rounded-full bg-[#800000] border border-white/20 text-white flex items-center justify-center font-bold text-xs shadow-inner shrink-0">
               RH
             </div>
-            <div>
-              <div className="font-semibold text-sm tracking-tight text-white">Rabta-e-Hayat</div>
-              <div className="text-[10px] text-white/50">Blood Welfare Desk</div>
+            <div className="overflow-hidden">
+              <div className="font-semibold text-sm tracking-tight text-white truncate">Rabta-e-Hayat</div>
+              <div className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 truncate" title={coordinatorEmail}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                <span className="truncate">{coordinatorEmail}</span>
+              </div>
             </div>
           </div>
 

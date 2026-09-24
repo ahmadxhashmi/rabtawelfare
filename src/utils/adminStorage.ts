@@ -291,26 +291,59 @@ export const resetToDefaults = (): void => {
   window.dispatchEvent(new CustomEvent("rabta_data_updated", { detail: { reset: true } }));
 };
 
-// Auth helper
+// -------------------------------------------------------------
+// Real Session & JWT Auth Helpers (Locked by Default)
+// -------------------------------------------------------------
 export const checkAdminAuth = (): boolean => {
-  if (typeof window === "undefined") return true;
+  if (typeof window === "undefined") return false;
   try {
-    const isLocked = sessionStorage.getItem("rabta_admin_locked") === "true";
-    return !isLocked;
+    const sessionToken =
+      localStorage.getItem("rabta_admin_session_token") ||
+      sessionStorage.getItem("rabta_admin_session_token");
+
+    // Check for Supabase Auth JWT token in localStorage
+    const hasSupabaseToken = Object.keys(localStorage).some(
+      (k) => k.startsWith("sb-") && k.endsWith("-auth-token") && localStorage.getItem(k)
+    );
+
+    return Boolean(sessionToken || hasSupabaseToken);
   } catch {
-    return true;
+    return false;
   }
 };
 
-export const setAdminAuth = (authenticated: boolean): void => {
+export const setAdminAuth = (
+  token: string | null,
+  email?: string,
+  remember = true
+): void => {
   if (typeof window === "undefined") return;
   try {
-    if (authenticated) {
-      sessionStorage.removeItem("rabta_admin_locked");
+    if (token) {
+      if (remember) {
+        localStorage.setItem("rabta_admin_session_token", token);
+        if (email) localStorage.setItem("rabta_admin_email", email);
+      } else {
+        sessionStorage.setItem("rabta_admin_session_token", token);
+        if (email) sessionStorage.setItem("rabta_admin_email", email);
+      }
     } else {
-      sessionStorage.setItem("rabta_admin_locked", "true");
+      localStorage.removeItem("rabta_admin_session_token");
+      localStorage.removeItem("rabta_admin_email");
+      sessionStorage.removeItem("rabta_admin_session_token");
+      sessionStorage.removeItem("rabta_admin_email");
     }
   } catch (err) {
     console.error("Storage error:", err);
   }
 };
+
+export const getAdminCoordinatorEmail = (): string => {
+  if (typeof window === "undefined") return "admin@rabtaehayat.pk";
+  return (
+    localStorage.getItem("rabta_admin_email") ||
+    sessionStorage.getItem("rabta_admin_email") ||
+    "admin@rabtaehayat.pk"
+  );
+};
+

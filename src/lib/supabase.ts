@@ -19,8 +19,78 @@ export const isSupabaseConfigured = (): boolean => {
 // Create Supabase client instance (with dummy fallback if env not configured yet to prevent crash)
 export const supabase = createClient(
   isSupabaseConfigured() ? supabaseUrl : "https://dummyproject.supabase.co",
-  isSupabaseConfigured() ? supabaseAnonKey : "dummy-anon-key"
+  isSupabaseConfigured() ? supabaseAnonKey : "dummy-anon-key",
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  }
 );
+
+// -------------------------------------------------------------
+// Authentication Helpers
+// -------------------------------------------------------------
+export const authSignIn = async (email: string, password: string) => {
+  if (!isSupabaseConfigured()) {
+    // Development / Offline Fallback
+    if (email.toLowerCase() === "admin@rabtaehayat.pk" && password === "Rabta2026!") {
+      return {
+        data: {
+          user: { id: "offline-admin", email: "admin@rabtaehayat.pk" },
+          session: { access_token: "offline-jwt-token" },
+        },
+        error: null,
+      };
+    }
+    return { data: null, error: { message: "Invalid credentials or database not configured." } };
+  }
+  return await supabase.auth.signInWithPassword({ email, password });
+};
+
+export const authSignUp = async (email: string, password: string) => {
+  if (!isSupabaseConfigured()) {
+    return { data: null, error: { message: "Database not configured." } };
+  }
+  return await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        role: "admin_coordinator",
+      },
+    },
+  });
+};
+
+export const authSignOut = async () => {
+  if (!isSupabaseConfigured()) return { error: null };
+  return await supabase.auth.signOut();
+};
+
+export const authGetSession = async () => {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session;
+  } catch (err) {
+    console.error("Auth session error:", err);
+    return null;
+  }
+};
+
+export const authGetUser = async () => {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data.user;
+  } catch (err) {
+    console.error("Auth user error:", err);
+    return null;
+  }
+};
+
 
 // Map DB row to TypeScript BloodRequest
 export const mapDbToBloodRequest = (row: any): BloodRequest => ({
